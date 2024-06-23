@@ -51,7 +51,8 @@ The service will be available at localhost:4000 and hot reload any code changes 
 ### Output on success
 {
     error: false,
-    status: 'SESSION_AUTHENTICATED'
+    status: 'SESSION_AUTHENTICATED',
+    data: 'username of authenticated user'
 }
 ### Output on failure
 {
