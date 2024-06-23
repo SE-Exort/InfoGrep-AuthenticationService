@@ -1,0 +1,42 @@
+import { z } from "zod";
+import { app } from "./index";
+import bcrypt from "bcrypt";
+import crypto from "crypto";
+import User from "./User";
+
+const sessions = new Map<string, string[]>();
+
+const LoginParams = z.object({
+  username: z.string(),
+  password: z.string(),
+});
+
+app.post("/login", async (req, res) => {
+  const params = LoginParams.parse(req.body);
+
+  // ensure the user exists
+  const user = await User.findOne({
+    where: {
+      username: params.username,
+    },
+  });
+  if (!user) {
+    res.send({ error: true, status: "INVALID_USERNAME_OR_PASSWORD" });
+    return;
+  }
+
+  // ensure the password is correct
+  const correct = await bcrypt.compare(params.password, user.password);
+
+  if (correct) {
+    // create a session
+    if (!sessions.has(user.username)) sessions.set(user.username, []);
+    const sessionId = crypto.randomBytes(64).toString("hex");
+    sessions.get(user.username)!.push(sessionId);
+    res.send({ session: sessionId });
+  } else {
+    res.send({ error: true, status: "INVALID_USERNAME_OR_PASSWORD" });
+  }
+});
+
+export { sessions };
