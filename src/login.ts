@@ -3,6 +3,7 @@ import { app } from "./index";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import User from "./User";
+import { createSession } from "./utils";
 
 const sessions = new Map<string, string[]>();
 
@@ -30,10 +31,11 @@ app.post("/login", async (req, res) => {
 
   if (correct) {
     // create a session
-    if (!sessions.has(user.username)) sessions.set(user.username, []);
-    const sessionId = crypto.randomBytes(64).toString("hex");
-    sessions.get(user.username)!.push(sessionId);
-    res.send({ session: sessionId });
+    res.send({
+      error: false,
+      status: "SUCCESSFUL_AUTHENTICATION",
+      data: createSession(user.username),
+    });
   } else {
     res.send({ error: true, status: "INVALID_USERNAME_OR_PASSWORD" });
   }

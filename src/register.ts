@@ -9,6 +9,7 @@ import { sequelize, app } from "./index";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import User from "./User";
+import { createSession } from "./utils";
 
 const RegisterParams = z.object({
   username: z.string(),
@@ -19,7 +20,7 @@ app.post("/register", async (req, res) => {
   const params = RegisterParams.parse(req.body);
 
   // ensure the user exists
-  const user = await User.findOne({
+  let user = await User.findOne({
     where: {
       username: params.username,
     },
@@ -32,10 +33,9 @@ app.post("/register", async (req, res) => {
   // hash given password
   const hashedPassword = await bcrypt.hash(params.password, 10);
 
-  User.create({
+  user = await User.create({
     username: params.username,
     password: hashedPassword,
   });
-
-  res.send({ error: false, status: "SUCCESS" });
+  res.send({ error: false, status: "USER_REGISTERED", data: createSession(user.username) });
 });
