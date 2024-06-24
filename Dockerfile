@@ -1,5 +1,7 @@
 FROM node:latest as base
 
+USER node
+
 WORKDIR /home/node/app
 
 COPY package.json ./
