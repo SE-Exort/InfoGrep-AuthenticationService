@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { app } from "./index";
-import { sessions } from "login";
+import { sessions } from "./login";
 
 const CheckParams = z.object({
   sessionToken: z.string(),

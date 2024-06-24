@@ -25,3 +25,4 @@ app.listen(4000, () => {
 export { sequelize, app };
 import './login'
 import './register'
+import './check'
