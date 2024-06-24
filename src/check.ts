@@ -12,6 +12,11 @@ app.post("/check", async (req, res) => {
   // todo: check session using the sessions hashmap
 
   let sessionExists = false;
+
+  if (sessions.has(params.sessionToken)) {
+      sessionExists = true;
+    }
+
   if (sessionExists) {
     // give the other services the authenticated user's username as unique ID across all services
     res.send({ status: "SESSION_AUTHENTICATED", data: {
