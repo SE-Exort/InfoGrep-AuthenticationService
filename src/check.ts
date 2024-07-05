@@ -18,16 +18,12 @@ app.post("/check", async (req, res) => {
   let username = '';
 
   for (const [user, tokens] of sessions.entries()) {
-    if (tokens.includes(params.sessionToken)) {
+    if (tokens.has(params.sessionToken)) {
       sessionExists = true;
       username = user;
       break;
     }
   }
-
-  if (sessions.has(params.sessionToken)) {
-      sessionExists = true;
-    }
 
   if (sessionExists) {
     // give the other services the authenticated user's username as unique ID across all services

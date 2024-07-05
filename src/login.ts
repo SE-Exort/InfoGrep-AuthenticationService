@@ -5,7 +5,7 @@ import crypto from "crypto";
 import User from "./User";
 import { createSession } from "./utils";
 
-const sessions = new Map<string, string[]>();
+const sessions = new Map<string, Set<string>>();
 
 const LoginParams = z.object({
   username: z.string(),
