@@ -17,7 +17,12 @@ const RegisterParams = z.object({
 });
 
 app.post("/register", async (req, res) => {
-  const params = RegisterParams.parse(req.body);
+  const parseResult = RegisterParams.safeParse(req.body);
+  if (!parseResult.success) {
+    res.send({ error: true, status: "INVALID_USERNAME_OR_PASSWORD" });
+    return;
+  }
+  const params = parseResult.data;
 
   // ensure the user exists
   let user = await User.findOne({

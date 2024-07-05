@@ -13,7 +13,12 @@ const LoginParams = z.object({
 });
 
 app.post("/login", async (req, res) => {
-  const params = LoginParams.parse(req.body);
+  const parseResult = LoginParams.safeParse(req.body);
+  if (!parseResult.success) {
+    res.send({ error: true, status: "INVALID_USERNAME_OR_PASSWORD" });
+    return;
+  }
+  const params = parseResult.data;
 
   // ensure the user exists
   const user = await User.findOne({

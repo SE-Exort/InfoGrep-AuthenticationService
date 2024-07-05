@@ -7,9 +7,12 @@ const CheckParams = z.object({
 });
 
 app.post("/check", async (req, res) => {
-  const params = CheckParams.parse(req.body);
-
-  // todo: check session using the sessions hashmap
+  const parseResult = CheckParams.safeParse(req.body);
+  if (!parseResult.success) {
+    res.send({ error: true, status: "INVALID_SESSION" });
+    return;
+  }
+  const params = parseResult.data;
 
   let sessionExists = false;
   let username = '';
