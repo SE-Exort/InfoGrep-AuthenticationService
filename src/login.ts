@@ -39,7 +39,7 @@ app.post("/login", async (req, res) => {
     res.send({
       error: false,
       status: "SUCCESSFUL_AUTHENTICATION",
-      data: createSession(user.username),
+      data: createSession(user.id),
     });
   } else {
     res.send({ error: true, status: "INVALID_USERNAME_OR_PASSWORD" });

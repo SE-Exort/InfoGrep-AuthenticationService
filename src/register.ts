@@ -42,5 +42,5 @@ app.post("/register", async (req, res) => {
     username: params.username,
     password: hashedPassword,
   });
-  res.send({ error: false, status: "USER_REGISTERED", data: createSession(user.username) });
+  res.send({ error: false, status: "USER_REGISTERED", data: createSession(user.id) });
 });

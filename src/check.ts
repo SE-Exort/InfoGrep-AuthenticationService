@@ -15,12 +15,12 @@ app.post("/check", async (req, res) => {
   const params = parseResult.data;
 
   let sessionExists = false;
-  let username = '';
+  let userId = '';
 
-  for (const [user, tokens] of sessions.entries()) {
+  for (const [id, tokens] of sessions.entries()) {
     if (tokens.has(params.sessionToken)) {
       sessionExists = true;
-      username = user;
+      userId = id;
       break;
     }
   }
@@ -28,7 +28,7 @@ app.post("/check", async (req, res) => {
   if (sessionExists) {
     // give the other services the authenticated user's username as unique ID across all services
     res.send({ status: "SESSION_AUTHENTICATED", data: {
-      username: username 
+      id: userId
     }});
   } else {
     res.send({ error: true, status: "INVALID_SESSION" });
