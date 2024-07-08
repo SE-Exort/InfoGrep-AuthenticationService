@@ -52,7 +52,7 @@ The service will be available at localhost:4000 and hot reload any code changes 
 {
     error: false,
     status: 'SESSION_AUTHENTICATED',
-    data: 'username of authenticated user'
+    data: 'UUID of authenticated user'
 }
 ### Output on failure
 {
