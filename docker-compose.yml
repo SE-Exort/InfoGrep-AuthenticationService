@@ -1,7 +1,5 @@
-version: '3.7'
-
 services:
-  ts-node-docker:
+  auth-service:
     build:
       context: .
       dockerfile: Dockerfile
@@ -9,20 +7,20 @@ services:
     volumes:
       - ./src:/home/node/app/src
       - ./nodemon.json:/home/node/app/nodemon.json
-    container_name: ts-node-docker
+    container_name: auth-service
     expose:
       - '4000'
     ports:
       - '4000:4000'
     command: npm run dev
     depends_on:
-      postgres:
+      auth-service-postgres:
         condition: service_healthy
     links:
-      - postgres
+      - auth-service-postgres
   
-  postgres:
-    container_name: postgres
+  auth-service-postgres:
+    container_name: auth-service-postgres
     image: postgres
     restart: always
     # set shared memory limit when using docker-compose
