@@ -7,7 +7,7 @@ const app = express();
 app.use(express.json());
 
 const sequelize = new Sequelize(
-  "postgres://postgres:example@postgres:5432/postgres"
+  "postgres://postgres:example@auth-service-postgres:5432/postgres"
 );
 
 sequelize
