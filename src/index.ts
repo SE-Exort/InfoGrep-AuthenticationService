@@ -2,8 +2,10 @@ import express from "express";
 import {
   Sequelize,
 } from "sequelize";
+import cors from 'cors';
 
 const app = express();
+app.use(cors())
 app.use(express.json());
 
 const sequelize = new Sequelize(
