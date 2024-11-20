@@ -1,4 +1,4 @@
-FROM node:latest as base
+FROM node:latest AS base
 
 USER node
 
@@ -10,8 +10,12 @@ RUN npm i
 
 COPY . .
 
-FROM base as production
+FROM base AS production
 
 ENV NODE_PATH=./build
 
 RUN npm run build
+
+EXPOSE 4000
+
+CMD ["node", "./build/index.js"]
