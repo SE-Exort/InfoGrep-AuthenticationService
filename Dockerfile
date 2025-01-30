@@ -1,21 +1,9 @@
-FROM node:latest AS base
+FROM python:3.10.14
 
-USER node
+COPY . /app
+WORKDIR /app
 
-WORKDIR /home/node/app
-
-COPY package.json ./
-
-RUN npm i
-
-COPY . .
-
-FROM base AS production
-
-ENV NODE_PATH=./build
-
-RUN npm run build
+RUN (pip3 install -r requirements.txt)
 
 EXPOSE 4000
-
-CMD ["node", "./build/index.js"]
+CMD ["python3", "main.py"]
