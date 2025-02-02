@@ -1,4 +1,20 @@
 services:
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./src:/usr/src/app
+    container_name: auth-service
+    expose:
+      - '4000'
+    ports:
+      - '4000:4000'
+    depends_on:
+      auth-service-postgres:
+        condition: service_healthy
+    links:
+      - auth-service-postgres
   auth-service-postgres:
     container_name: auth-service-postgres
     image: postgres

@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
 from sqlalchemy.exc import OperationalError
-from Endpoints.Endpoints import router
+from Endpoints import router
+from starlette.middleware.sessions import SessionMiddleware
 from db import engine
 
 InfoGrepAuthentication = FastAPI()
@@ -37,6 +38,7 @@ InfoGrepAuthentication.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+InfoGrepAuthentication.add_middleware(SessionMiddleware, secret_key="some-random-string")
 
 InfoGrepAuthentication.include_router(router)
 

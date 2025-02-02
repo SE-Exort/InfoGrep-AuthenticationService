@@ -6,3 +6,6 @@ bcrypt
 pydantic
 python-dotenv
 passlib
+authlib
+httpx
+fastapi-sessions

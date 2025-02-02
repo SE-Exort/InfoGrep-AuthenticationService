@@ -2,16 +2,37 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-import uuid
 from db import engine
 from User import User
 import secrets
 import threading
+from authlib.integrations.starlette_client import OAuth
+from starlette.requests import Request
+from os import environ as env
+from dotenv import find_dotenv, load_dotenv
+
+# Load configs for OAuth
+ENV_FILE = find_dotenv()
+if ENV_FILE:
+    load_dotenv(ENV_FILE)
+
+oauth = OAuth()
+
+oauth.register(
+    "enterprise",
+    client_id=env.get("CLIENT_ID"),
+    client_secret=env.get("CLIENT_SECRET"),
+    client_kwargs={
+        "scope": "openid profile email",
+    },
+    server_metadata_url=f'https://{env.get("DOMAIN")}/.well-known/openid-configuration'
+)
 
 router = APIRouter()
 
 # Session storage
-sessions = {}
+token_to_id = {}
+timer_map = {}
 
 # Password hashing utility
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -28,18 +49,24 @@ class RegisterParams(BaseModel):
 class CheckParams(BaseModel):
     sessionToken: str
 
-SESSION_TIMEOUT_EXPIRY = 6 * 3600  # 6 hours 
-def create_session(user_id: str) -> str:
-    if user_id not in sessions:
-        sessions[user_id] = set()
+SESSION_TIMEOUT_EXPIRY = 24 * 3600 * 2  # 2 days
+def start_invalidate_token_timer(token):
+    timer_map.pop(token, None) # invalidate any current timers on this token
+    def timer_func():
+        del token_to_id[token]
+        del timer_map[token]
+    timer = threading.Timer(SESSION_TIMEOUT_EXPIRY, timer_func)
+    timer_map[token] = timer
+    timer.start()
 
-    session_id = secrets.token_hex(64)
-    sessions[user_id].add(session_id)
+def create_session(user_id: str) -> str:
+    token = secrets.token_hex(64)
+    token_to_id[token] = user_id
 
     # Set a timeout to remove the session after the expiry time
-    threading.Timer(SESSION_TIMEOUT_EXPIRY, lambda: sessions[user_id].discard(session_id)).start()
+    start_invalidate_token_timer(token)
 
-    return session_id
+    return token
 
 def get_db():
     db = Session(bind=engine)
@@ -47,6 +74,21 @@ def get_db():
         yield db
     finally:
         db.close()
+
+@router.get("/oauth_login")
+async def login(request: Request):
+    enterprise = oauth.create_client('enterprise')
+    redirect_uri = 'http://localhost:4000/authorize'
+    return await enterprise.authorize_redirect(request, redirect_uri)
+
+oauth_map = dict()
+@router.get("/authorize")
+async def authorize(request: Request):
+    token = await oauth.enterprise.authorize_access_token(request)
+    print(token)
+    user = token['userinfo']
+    oauth_map[user['email']] = token
+    return create_session(user['email'])
 
 @router.post("/register")
 def register(params: RegisterParams, db: Session = Depends(get_db)):
@@ -82,8 +124,14 @@ def login(params: LoginParams, db: Session = Depends(get_db)):
 @router.post("/check")
 def check(params: CheckParams):
     # Verify if the session token exists in active sessions
-    session_exists = any(params.sessionToken in tokens for tokens in sessions.values())
+    session_exists = any(params.sessionToken in token_to_id)
     if session_exists:
-        return {"status": "SESSION_AUTHENTICATED"}
+        # renew the token for another set duration
+        start_invalidate_token_timer(params.sessionToken)
+        return {"status": "SESSION_AUTHENTICATED", "id": token_to_id[params.sessionToken]}
     else:
         raise HTTPException(status_code=400, detail="INVALID_SESSION")
+
+@router.post("/logout")
+def check(params: CheckParams):
+    del token_to_id[params.sessionToken]
