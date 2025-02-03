@@ -49,6 +49,10 @@ class RegisterParams(BaseModel):
 class CheckParams(BaseModel):
     sessionToken: str
 
+# all of our auth modes (oauth, password) are mutually exclusive
+def ensure_auth_mode(mode: str):
+    if env.get("AUTH_MODE") != mode: raise HTTPException(status_code=400, detail="INVALID_AUTH_MODE")
+
 SESSION_TIMEOUT_EXPIRY = 24 * 3600 * 2  # 2 days
 def start_invalidate_token_timer(token):
     timer_map.pop(token, None) # invalidate any current timers on this token
@@ -77,6 +81,8 @@ def get_db():
 
 @router.get("/oauth_login")
 async def login(request: Request):
+    ensure_auth_mode("oauth")
+
     enterprise = oauth.create_client('enterprise')
     redirect_uri = 'http://localhost:4000/authorize'
     return await enterprise.authorize_redirect(request, redirect_uri)
@@ -84,14 +90,17 @@ async def login(request: Request):
 oauth_map = dict()
 @router.get("/authorize")
 async def authorize(request: Request):
+    ensure_auth_mode("oauth")
+
     token = await oauth.enterprise.authorize_access_token(request)
-    print(token)
     user = token['userinfo']
     oauth_map[user['email']] = token
     return create_session(user['email'])
 
 @router.post("/register")
 def register(params: RegisterParams, db: Session = Depends(get_db)):
+    ensure_auth_mode("password")
+
     # Check if the user already exists
     user = db.query(User).filter(User.username == params.username).first()
     if user:
@@ -110,6 +119,8 @@ def register(params: RegisterParams, db: Session = Depends(get_db)):
 
 @router.post("/login")
 def login(params: LoginParams, db: Session = Depends(get_db)):
+    ensure_auth_mode("password")
+    
     # Retrieve user from the database
     user = db.query(User).filter(User.username == params.username).first()
     
