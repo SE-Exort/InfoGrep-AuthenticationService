@@ -140,7 +140,7 @@ async def login(params: LoginParams, db: Session = Depends(get_db)):
 @router.post("/check")
 def check(params: CheckParams):
     # Verify if the session token exists in active sessions
-    session_exists = any(params.sessionToken in token_to_id)
+    session_exists = params.sessionToken in token_to_id
     if session_exists:
         # renew the token for another set duration
         start_invalidate_token_timer(params.sessionToken)
