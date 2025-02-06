@@ -150,4 +150,5 @@ def check(params: CheckParams):
 
 @router.post("/logout")
 def check(params: CheckParams):
-    del token_to_id[params.sessionToken]
+    token_to_id.pop(params.sessionToken, None)
+    return "OK"
