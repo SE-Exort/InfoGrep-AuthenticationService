@@ -106,7 +106,7 @@ async def authorize(request: Request):
 
 @router.post("/register")
 @ensure_auth_mode("password")
-def register(params: RegisterParams, db: Session = Depends(get_db)):
+async def register(params: RegisterParams, db: Session = Depends(get_db)):
     # Check if the user already exists
     user = db.query(User).filter(User.username == params.username).first()
     if user:
@@ -125,7 +125,7 @@ def register(params: RegisterParams, db: Session = Depends(get_db)):
 
 @router.post("/login")
 @ensure_auth_mode("password")
-def login(params: LoginParams, db: Session = Depends(get_db)):
+async def login(params: LoginParams, db: Session = Depends(get_db)):
     # Retrieve user from the database
     user = db.query(User).filter(User.username == params.username).first()
     
