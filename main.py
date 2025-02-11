@@ -1,15 +1,19 @@
 import os
 
+import passlib
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.exc import OperationalError
+from passlib.context import CryptContext
 
 from Endpoints import router
 from InfoGrep_BackendSDK.middleware import TracingMiddleware, LoggingMiddleware
 from InfoGrep_BackendSDK.infogrep_logger.logger import Logger
-from db import engine
+from User import User
+from db import engine, get_db
+
 
 InfoGrepAuthentication = FastAPI()
 
@@ -26,6 +30,18 @@ os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
 origins = [
     "*",
 ]
+
+# If we are in auth=password mode, create the admin user if it doesn't exist
+db = next(get_db())
+admin_user = db.query(User).filter(User.username == "admin").first()
+if not admin_user:
+    print("Creating default admin user..")
+    crypt_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    hashed_password = crypt_ctx.hash("admin")
+    new_user = User(username="admin", password=hashed_password)
+    
+    db.add(new_user)
+    db.commit()
 
 InfoGrepAuthentication.add_middleware(TracingMiddleware)
 InfoGrepAuthentication.add_middleware(LoggingMiddleware, logger=Logger("AuthServiceLogger"))
