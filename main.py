@@ -13,6 +13,8 @@ from InfoGrep_BackendSDK.middleware import TracingMiddleware, LoggingMiddleware
 from InfoGrep_BackendSDK.infogrep_logger.logger import Logger
 from User import User
 from db import engine, get_db
+from dotenv import find_dotenv, load_dotenv
+from os import environ as env
 
 
 InfoGrepAuthentication = FastAPI()
@@ -31,10 +33,14 @@ origins = [
     "*",
 ]
 
+# Load configs for OAuth
+ENV_FILE = find_dotenv()
+if ENV_FILE:
+    load_dotenv(ENV_FILE)
+
 # If we are in auth=password mode, create the admin user if it doesn't exist
 db = next(get_db())
-admin_user = db.query(User).filter(User.username == "admin").first()
-if not admin_user:
+if env.get("AUTH_MODE") == "password" and not db.query(User).filter(User.username == "admin").first():
     print("Creating default admin user..")
     crypt_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
     hashed_password = crypt_ctx.hash("admin")
