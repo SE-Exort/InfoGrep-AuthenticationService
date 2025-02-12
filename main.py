@@ -41,7 +41,7 @@ if ENV_FILE:
 # If we are in auth=password mode, create the admin user if it doesn't exist
 db = next(get_db())
 if env.get("AUTH_MODE") == "password" and not db.query(User).filter(User.username == "admin").first():
-    print("Creating default admin user..")
+    Logger("AuthServiceLogger").info("Creating default admin user..")
     crypt_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
     hashed_password = crypt_ctx.hash("admin")
     new_user = User(username="admin", password=hashed_password)
