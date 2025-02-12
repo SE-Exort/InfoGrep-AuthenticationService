@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 import os
+from sqlalchemy.orm import Session
 
 # DB config
 db_port = "5432"
@@ -12,3 +13,10 @@ DATABASE_URL = f"postgresql://{db_user}:{db_password}@{db_host}/{db_name}"
 
 # Create SQLAlchemy engine
 engine = create_engine(DATABASE_URL)
+
+def get_db():
+    db = Session(bind=engine)
+    try:
+        yield db
+    finally:
+        db.close()

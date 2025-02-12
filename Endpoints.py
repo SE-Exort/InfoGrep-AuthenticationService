@@ -2,21 +2,14 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-from db import engine
+from db import engine, get_db
 from User import User
 import secrets
 import threading
 from authlib.integrations.starlette_client import OAuth
 from starlette.requests import Request
 from os import environ as env
-from dotenv import find_dotenv, load_dotenv
 from functools import wraps
-
-
-# Load configs for OAuth
-ENV_FILE = find_dotenv()
-if ENV_FILE:
-    load_dotenv(ENV_FILE)
 
 oauth = OAuth()
 
@@ -32,12 +25,23 @@ oauth.register(
 
 router = APIRouter()
 
-# Session storage
-token_to_id = {}
-timer_map = {}
+class UserSession:
+    username: str
+    timer: threading.Timer
+    is_admin: bool
+
+    def __init__(self, username, timer, is_admin):
+        self.username = username
+        self.timer = timer
+        self.is_admin = is_admin
+
+
+# Session hashmaps
+token_session_map = {} # K: session_token, V: UserSession
+oauth_map = dict()
 
 # Password hashing utility
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+crypt_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Request models
 class LoginParams(BaseModel):
@@ -63,30 +67,22 @@ def ensure_auth_mode(mode: str):
     return decorator
 
 SESSION_TIMEOUT_EXPIRY = 24 * 3600 * 2  # 2 days
-def start_invalidate_token_timer(token):
-    timer_map.pop(token, None) # invalidate any current timers on this token
+def start_new_token_timer(token):
+    if token_session_map[token].timer != None:
+        token_session_map[token].timer.cancel()
+
     def timer_func():
-        del token_to_id[token]
-        del timer_map[token]
+        del token_session_map[token]
     timer = threading.Timer(SESSION_TIMEOUT_EXPIRY, timer_func)
-    timer_map[token] = timer
+    token_session_map[token].timer = timer
     timer.start()
 
-def create_session(user_id: str) -> str:
+def create_session(user_id: str, is_admin: bool) -> str:
     token = secrets.token_hex(64)
-    token_to_id[token] = user_id
-
+    token_session_map[token] = UserSession(user_id, None, is_admin)
     # Set a timeout to remove the session after the expiry time
-    start_invalidate_token_timer(token)
-
+    start_new_token_timer(token)
     return token
-
-def get_db():
-    db = Session(bind=engine)
-    try:
-        yield db
-    finally:
-        db.close()
 
 @router.get("/oauth_login")
 @ensure_auth_mode("oauth")
@@ -95,14 +91,13 @@ async def login(request: Request):
     redirect_uri = 'http://localhost:4000/authorize'
     return await enterprise.authorize_redirect(request, redirect_uri)
 
-oauth_map = dict()
 @router.get("/authorize")
 @ensure_auth_mode("oauth")
 async def authorize(request: Request):
     token = await oauth.enterprise.authorize_access_token(request)
     user = token['userinfo']
     oauth_map[user['email']] = token
-    return create_session(user['email'])
+    return create_session(user['email'], False) # TODO: support Oauth admin
 
 @router.post("/register")
 @ensure_auth_mode("password")
@@ -113,14 +108,14 @@ async def register(params: RegisterParams, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="USER_ALREADY_EXISTS")
     
     # Hash password before storing it
-    hashed_password = pwd_context.hash(params.password)
+    hashed_password = crypt_ctx.hash(params.password)
     new_user = User(username=params.username, password=hashed_password)
     
     db.add(new_user)
     db.commit()
     
     # Create a session token for the new user
-    session_token = create_session(new_user.id)
+    session_token = create_session(new_user.id, False) # admin can never be created via api call
     return {"error": False, "status": "USER_REGISTERED", "data": session_token}
 
 @router.post("/login")
@@ -130,25 +125,28 @@ async def login(params: LoginParams, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == params.username).first()
     
     # Check if the user exists and the password is correct
-    if not user or not pwd_context.verify(params.password, user.password):
+    if not user or not crypt_ctx.verify(params.password, user.password):
         raise HTTPException(status_code=400, detail="INVALID_USERNAME_OR_PASSWORD")
-    
+
     # Create a session token for the user
-    session_token = create_session(user.id)
+    session_token = create_session(user.id, user.username == "admin")
     return {"error": False, "status": "SUCCESSFUL_AUTHENTICATION", "data": session_token}
 
 @router.post("/check")
 def check(params: CheckParams):
     # Verify if the session token exists in active sessions
-    session_exists = params.sessionToken in token_to_id
+    session_exists = params.sessionToken in token_session_map
     if session_exists:
+        session = token_session_map[params.sessionToken]
         # renew the token for another set duration
-        start_invalidate_token_timer(params.sessionToken)
-        return {"status": "SESSION_AUTHENTICATED", "id": token_to_id[params.sessionToken]}
+        start_new_token_timer(params.sessionToken)
+        return {"status": "SESSION_AUTHENTICATED", "id": session.username, "is_admin": session.is_admin}
     else:
         raise HTTPException(status_code=400, detail="INVALID_SESSION")
 
 @router.post("/logout")
 def check(params: CheckParams):
-    token_to_id.pop(params.sessionToken, None)
+    user_session = token_session_map.pop(params.sessionToken, None)
+    if user_session != None:
+        user_session.timer.cancel()
     return "OK"
