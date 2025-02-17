@@ -12,7 +12,7 @@ db_name = os.environ.get("PG_DATABASE_NAME", "postgres")
 DATABASE_URL = f"postgresql://{db_user}:{db_password}@{db_host}/{db_name}"
 
 # Create SQLAlchemy engine
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 def get_db():
     db = Session(bind=engine)
