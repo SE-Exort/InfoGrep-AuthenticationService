@@ -7,7 +7,7 @@ db_port = "5432"
 db_host = os.environ.get("PGHOST", f"auth-service-postgres:{db_port}")
 db_user = os.environ.get("POSTGRES_USERNAME", "postgres")
 db_password = os.environ.get("POSTGRES_PASSWORD", "example")
-db_name = "postgres"
+db_name = os.environ.get("PG_DATABASE_NAME", "postgres")
 
 DATABASE_URL = f"postgresql://{db_user}:{db_password}@{db_host}/{db_name}"
 
