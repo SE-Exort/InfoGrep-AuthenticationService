@@ -140,9 +140,9 @@ def check(params: CheckParams):
         session = token_session_map[params.sessionToken]
         # renew the token for another set duration
         start_new_token_timer(params.sessionToken)
-        return {"status": "SESSION_AUTHENTICATED", "id": session.username, "is_admin": session.is_admin}
+        return {"error": False, "status": "SESSION_AUTHENTICATED", "id": session.username, "is_admin": session.is_admin}
     else:
-        raise HTTPException(status_code=400, detail="INVALID_SESSION")
+        return {"error": True, "status": "INVALID_SESSION", "is_admin": False}
 
 @router.post("/logout")
 def check(params: CheckParams):
