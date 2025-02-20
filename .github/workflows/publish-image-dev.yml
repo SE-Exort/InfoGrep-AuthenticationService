@@ -4,7 +4,7 @@ name: Create and Publish the Service Docker Dev Image
 # Configures this workflow to run every time a change is pushed to the branch called `release`.
 on:
   push:
-    branches: ["dev"]
+    branches: ["dev/**"]
 
 # Defines two custom environment variables for the workflow. These are used for the Container registry domain, and a name for the Docker image that this workflow builds.
 env:
@@ -40,7 +40,7 @@ jobs:
         run: docker build -t infogrep/auth-service .
 
       - name: Tag
-        run: docker image tag infogrep/auth-service ghcr.io/se-exort/auth-service:dev
+        run: docker image tag infogrep/auth-service ghcr.io/se-exort/auth-service:${GITHUB_REF##*/}-${{ github.run_number }}
 
       - name: Push image
-        run: docker push ghcr.io/se-exort/auth-service:dev
+        run: docker push ghcr.io/se-exort/auth-service:${GITHUB_REF##*/}-${{ github.run_number }}
