@@ -140,6 +140,7 @@ def check(params: CheckParams):
         session = token_session_map[params.sessionToken]
         # renew the token for another set duration
         start_new_token_timer(params.sessionToken)
+        print("In check")
         return {"error": False, "status": "SESSION_AUTHENTICATED", "id": session.username, "is_admin": session.is_admin}
     else:
         return {"error": True, "status": "INVALID_SESSION", "is_admin": False}
