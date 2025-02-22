@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -26,12 +26,12 @@ oauth.register(
 router = APIRouter()
 
 class UserSession:
-    username: str
+    id: str
     timer: threading.Timer
     is_admin: bool
 
-    def __init__(self, username, timer, is_admin):
-        self.username = username
+    def __init__(self, id, timer, is_admin):
+        self.id = id
         self.timer = timer
         self.is_admin = is_admin
 
@@ -54,6 +54,9 @@ class RegisterParams(BaseModel):
 
 class CheckParams(BaseModel):
     sessionToken: str
+
+class UserPatchParams(BaseModel):
+    password: str
 
 # all of our auth modes (oauth, password) are mutually exclusive
 def ensure_auth_mode(mode: str):
@@ -132,6 +135,19 @@ async def login(params: LoginParams, db: Session = Depends(get_db)):
     session_token = create_session(user.id, user.username == "admin")
     return {"error": False, "status": "SUCCESSFUL_AUTHENTICATION", "data": session_token}
 
+@router.patch("/user")
+@ensure_auth_mode("password")
+async def user(sessionToken: str = Query(), params: UserPatchParams = Body(), db: Session = Depends(get_db)):
+    session_exists = sessionToken in token_session_map
+    if not session_exists:
+        return {"error": True, "status": "INVALID_SESSION"}
+    
+    # Retrieve user from the database
+    user = db.query(User).filter(User.id == token_session_map[sessionToken].id).first()
+    user.password = crypt_ctx.hash(params.password)
+    db.commit()
+    return {"error": False, "status": "USER_UPDATED"}
+
 @router.post("/check")
 def check(params: CheckParams):
     # Verify if the session token exists in active sessions
@@ -140,7 +156,7 @@ def check(params: CheckParams):
         session = token_session_map[params.sessionToken]
         # renew the token for another set duration
         start_new_token_timer(params.sessionToken)
-        return {"error": False, "status": "SESSION_AUTHENTICATED", "id": session.username, "is_admin": session.is_admin}
+        return {"error": False, "status": "SESSION_AUTHENTICATED", "id": session.id, "is_admin": session.is_admin}
     else:
         return {"error": True, "status": "INVALID_SESSION", "is_admin": False}
 
