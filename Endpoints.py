@@ -58,6 +58,14 @@ class CheckParams(BaseModel):
 class UserPatchParams(BaseModel):
     password: str
 
+class AdminUserPatchParams(BaseModel):
+    id: str
+    username: str
+    password: str
+
+class AdminUserDeleteParams(BaseModel):
+    id: str
+
 # all of our auth modes (oauth, password) are mutually exclusive
 def ensure_auth_mode(mode: str):
     def decorator(func):
@@ -147,6 +155,43 @@ async def user(sessionToken: str = Query(), params: UserPatchParams = Body(), db
     user.password = crypt_ctx.hash(params.password)
     db.commit()
     return {"error": False, "status": "USER_UPDATED"}
+
+@router.delete("/admin/user")
+@ensure_auth_mode("password")
+async def user(sessionToken: str = Query(), params: AdminUserDeleteParams = Body(), db: Session = Depends(get_db)):
+    session_exists = sessionToken in token_session_map
+    if not session_exists or not token_session_map[sessionToken].is_admin:
+        return {"error": True, "status": "NOT_ADMIN"}
+    
+    # Retrieve user from the database
+    db.query(User).filter(User.id == params.id).delete()
+    db.commit()
+    return {"error": False, "status": "USER_DELETED"}
+
+@router.patch("/admin/user")
+@ensure_auth_mode("password")
+async def user(sessionToken: str = Query(), params: AdminUserPatchParams = Body(), db: Session = Depends(get_db)):
+    session_exists = sessionToken in token_session_map
+    if not session_exists or not token_session_map[sessionToken].is_admin:
+        return {"error": True, "status": "NOT_ADMIN"}
+    
+    # Retrieve user from the database
+    user = db.query(User).filter(User.id == params.id).first()
+    user.username = params.username
+    user.password = crypt_ctx.hash(params.password)
+    db.commit()
+    return {"error": False, "status": "USER_UPDATED"}
+
+@router.get("/admin/users")
+@ensure_auth_mode("password")
+async def user(sessionToken: str = Query(), db: Session = Depends(get_db)):
+    session_exists = sessionToken in token_session_map
+    if not session_exists or not token_session_map[sessionToken].is_admin:
+        return {"error": True, "status": "NOT_ADMIN"}
+    
+    # Retrieve user from the database
+    users = db.query(User).all()
+    return {"error": False, "data": users}
 
 @router.post("/check")
 def check(params: CheckParams):
