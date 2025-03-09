@@ -43,8 +43,7 @@ db = next(get_db())
 if env.get("AUTH_MODE") == "password" and not db.query(User).filter(User.username == "admin").first():
     Logger("AuthServiceLogger").info("Creating default admin user..")
     crypt_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    hashed_password = crypt_ctx.hash("admin")
-    new_user = User(username="admin", password=hashed_password)
+    new_user = User(username="admin", password=crypt_ctx.hash("aANzQ0yUl5Pa@a"))
     
     db.add(new_user)
     db.commit()
