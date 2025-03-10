@@ -17,7 +17,7 @@ from dotenv import find_dotenv, load_dotenv
 from os import environ as env
 
 
-InfoGrepAuthentication = FastAPI(openapi_url="/auth/openapi.json")
+InfoGrepAuthentication = FastAPI()
 
 # Test db connection
 try:
