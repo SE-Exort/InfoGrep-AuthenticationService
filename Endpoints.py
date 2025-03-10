@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
+from fastapi.openapi.docs import get_swagger_ui_html
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -211,3 +212,10 @@ def check(params: CheckParams):
     if user_session != None:
         user_session.timer.cancel()
     return "OK"
+
+@router.get("/api/docs")
+async def custom_swagger_ui_html():
+    return get_swagger_ui_html(
+        openapi_url="/auth/openapi.json",
+        title="Auth API Doc"
+    )
