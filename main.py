@@ -64,10 +64,9 @@ InfoGrepAuthentication.include_router(router)
 
 @InfoGrepAuthentication.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html(req: Request):
-    root_path = req.scope.get("root_path", "").rstrip("/")
-    openapi_url = root_path + InfoGrepAuthentication.openapi_url
+    Logger("AuthServiceLogger").info("Requested docs")
     return get_swagger_ui_html(
-        openapi_url=openapi_url,
+        openapi_url="/auth/openapi.json",
         title="API"
     )
 
