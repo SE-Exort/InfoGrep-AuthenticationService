@@ -2,7 +2,8 @@ import os
 
 import passlib
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.exc import OperationalError
@@ -60,6 +61,15 @@ InfoGrepAuthentication.add_middleware(
 InfoGrepAuthentication.add_middleware(SessionMiddleware, secret_key="some-random-string")
 
 InfoGrepAuthentication.include_router(router)
+
+@InfoGrepAuthentication.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html(req: Request):
+    root_path = req.scope.get("root_path", "").rstrip("/")
+    openapi_url = root_path + InfoGrepAuthentication.openapi_url
+    return get_swagger_ui_html(
+        openapi_url=openapi_url,
+        title="API"
+    )
 
 if __name__ == "__main__":
     uvicorn.run(InfoGrepAuthentication, host="0.0.0.0", port=4000)
