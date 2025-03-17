@@ -113,7 +113,11 @@ async def authorize(request: Request):
 
 @router.post("/register")
 @ensure_auth_mode("password")
-async def register(params: RegisterParams, db: Session = Depends(get_db)):
+async def register(sessionToken: str = Query(), params: RegisterParams = Body(), db: Session = Depends(get_db)):
+    session_exists = sessionToken in token_session_map
+    if not session_exists or not token_session_map[sessionToken].is_admin:
+        return {"error": True, "status": "NOT_ADMIN"}
+
     # Check if the user already exists
     user = db.query(User).filter(User.username == params.username).first()
     if user:
