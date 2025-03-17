@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    volumes:
-      - ./src:/usr/src/app
     container_name: auth-service
     expose:
       - '4000'
