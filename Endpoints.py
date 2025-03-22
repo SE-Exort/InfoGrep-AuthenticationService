@@ -1,11 +1,10 @@
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from fastapi.openapi.docs import get_swagger_ui_html
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-from db import engine, get_db
-from User import User
-import secrets
+from db import Sessions, Users, engine, get_db
 import threading
 from authlib.integrations.starlette_client import OAuth
 from starlette.requests import Request
@@ -36,9 +35,6 @@ class UserSession:
         self.timer = timer
         self.is_admin = is_admin
 
-
-# Session hashmaps
-token_session_map = {} # K: session_token, V: UserSession
 oauth_map = dict()
 
 # Password hashing utility
@@ -78,23 +74,20 @@ def ensure_auth_mode(mode: str):
         return wrapper
     return decorator
 
-SESSION_TIMEOUT_EXPIRY = 24 * 3600 * 2  # 2 days
-def start_new_token_timer(token):
-    if token_session_map[token].timer != None:
-        token_session_map[token].timer.cancel()
+# (session, is_admin)
+def check_session(session: str, db: Session) -> tuple[Sessions, bool]:
+    twenty_four_hours_ago = datetime.now(tz=timezone.utc) - timedelta(days=2)
+    session = db.query(Sessions).where(Sessions.id==session and Sessions.timestamp > twenty_four_hours_ago).first()
+    if not session or session.logged_out:
+        return (None, False)
+    user = db.query(Users).where(Users.id==session.user_id).one()
+    return (session, user.is_admin)
 
-    def timer_func():
-        del token_session_map[token]
-    timer = threading.Timer(SESSION_TIMEOUT_EXPIRY, timer_func)
-    token_session_map[token].timer = timer
-    timer.start()
-
-def create_session(user_id: str, is_admin: bool) -> str:
-    token = secrets.token_hex(64)
-    token_session_map[token] = UserSession(user_id, None, is_admin)
-    # Set a timeout to remove the session after the expiry time
-    start_new_token_timer(token)
-    return token
+def create_session(user_id: str, request: Request, db: Session) -> str:
+    session = Sessions(user_id=user_id, ip_address=request.client.host)
+    db.add(session)
+    db.commit()
+    return session.id
 
 @router.get("/oauth_login")
 @ensure_auth_mode("oauth")
@@ -105,58 +98,57 @@ async def login(request: Request):
 
 @router.get("/authorize")
 @ensure_auth_mode("oauth")
-async def authorize(request: Request):
+async def authorize(request: Request, db: Session = Depends(get_db)):
     token = await oauth.enterprise.authorize_access_token(request)
     user = token['userinfo']
     oauth_map[user['email']] = token
-    return create_session(user['email'], False) # TODO: support Oauth admin
+    return create_session(user['email'], request, db) # TODO: support Oauth admin
 
 @router.post("/register")
 @ensure_auth_mode("password")
-async def register(sessionToken: str = Query(), params: RegisterParams = Body(), db: Session = Depends(get_db)):
-    session_exists = sessionToken in token_session_map
-    if not session_exists or not token_session_map[sessionToken].is_admin:
+async def register(request: Request, sessionToken: str = Query(), params: RegisterParams = Body(), db: Session = Depends(get_db)):
+    (session, is_admin) = check_session(sessionToken, db)
+    if not session or not is_admin:
         return {"error": True, "status": "NOT_ADMIN"}
 
     # Check if the user already exists
-    user = db.query(User).filter(User.username == params.username).first()
+    user = db.query(Users).filter(Users.username == params.username).first()
     if user:
         raise HTTPException(status_code=400, detail="USER_ALREADY_EXISTS")
     
     # Hash password before storing it
     hashed_password = crypt_ctx.hash(params.password)
-    new_user = User(username=params.username, password=hashed_password)
-    
+    new_user = Users(username=params.username, password=hashed_password, is_admin=False)
     db.add(new_user)
     db.commit()
     
     # Create a session token for the new user
-    session_token = create_session(new_user.id, False) # admin can never be created via api call
+    session_token = create_session(new_user.id, request, db)
     return {"error": False, "status": "USER_REGISTERED", "data": session_token}
 
 @router.post("/login")
 @ensure_auth_mode("password")
-async def login(params: LoginParams, db: Session = Depends(get_db)):
+async def login(request: Request, params: LoginParams, db: Session = Depends(get_db)):
     # Retrieve user from the database
-    user = db.query(User).filter(User.username == params.username).first()
+    user = db.query(Users).filter(Users.username == params.username).first()
     
     # Check if the user exists and the password is correct
     if not user or not crypt_ctx.verify(params.password, user.password):
         raise HTTPException(status_code=400, detail="INVALID_USERNAME_OR_PASSWORD")
 
     # Create a session token for the user
-    session_token = create_session(user.id, user.username == "admin")
+    session_token = create_session(user.id, request, db)
     return {"error": False, "status": "SUCCESSFUL_AUTHENTICATION", "data": session_token}
 
 @router.patch("/user")
 @ensure_auth_mode("password")
 async def user(sessionToken: str = Query(), params: UserPatchParams = Body(), db: Session = Depends(get_db)):
-    session_exists = sessionToken in token_session_map
-    if not session_exists:
+    (session, _) = check_session(sessionToken, db)
+    if not session:
         return {"error": True, "status": "INVALID_SESSION"}
     
     # Retrieve user from the database
-    user = db.query(User).filter(User.id == token_session_map[sessionToken].id).first()
+    user = db.query(Users).filter(Users.id == session.user_id).first()
     user.password = crypt_ctx.hash(params.password)
     db.commit()
     return {"error": False, "status": "USER_UPDATED"}
@@ -164,24 +156,24 @@ async def user(sessionToken: str = Query(), params: UserPatchParams = Body(), db
 @router.delete("/admin/user")
 @ensure_auth_mode("password")
 async def user(sessionToken: str = Query(), params: AdminUserDeleteParams = Body(), db: Session = Depends(get_db)):
-    session_exists = sessionToken in token_session_map
-    if not session_exists or not token_session_map[sessionToken].is_admin:
+    (session, is_admin) = check_session(sessionToken, db)
+    if not session or not is_admin:
         return {"error": True, "status": "NOT_ADMIN"}
     
-    # Retrieve user from the database
-    db.query(User).filter(User.id == params.id).delete()
+    # Delete the requested user id
+    db.query(Users).filter(Users.id == params.id).delete()
     db.commit()
     return {"error": False, "status": "USER_DELETED"}
 
 @router.patch("/admin/user")
 @ensure_auth_mode("password")
 async def user(sessionToken: str = Query(), params: AdminUserPatchParams = Body(), db: Session = Depends(get_db)):
-    session_exists = sessionToken in token_session_map
-    if not session_exists or not token_session_map[sessionToken].is_admin:
+    (session, is_admin) = check_session(sessionToken, db)
+    if not session or not is_admin:
         return {"error": True, "status": "NOT_ADMIN"}
     
     # Retrieve user from the database
-    user = db.query(User).filter(User.id == params.id).first()
+    user = db.query(Users).filter(Users.id == params.id).first()
     user.username = params.username
     user.password = crypt_ctx.hash(params.password)
     db.commit()
@@ -190,32 +182,39 @@ async def user(sessionToken: str = Query(), params: AdminUserPatchParams = Body(
 @router.get("/admin/users")
 @ensure_auth_mode("password")
 async def user(sessionToken: str = Query(), db: Session = Depends(get_db)):
-    session_exists = sessionToken in token_session_map
-    if not session_exists or not token_session_map[sessionToken].is_admin:
+    (session, is_admin) = check_session(sessionToken, db)
+    if not session or not is_admin:
         return {"error": True, "status": "NOT_ADMIN"}
     
     # Retrieve user from the database
-    users = db.query(User).all()
+    users = db.query(Users).all()
     return {"error": False, "data": users}
 
+@router.get("/sessions")
+async def user(sessionToken: str = Query(), db: Session = Depends(get_db)):
+    (session, _) = check_session(sessionToken, db)
+    if not session:
+        return {"error": True, "status": "INVALID_SESSION"}
+    
+    # Retrieve user from the database
+    sessions = db.query(Sessions).where(Sessions.user_id==session.user_id).all()
+    return {"error": False, "data": sessions}
+
 @router.post("/check")
-def check(params: CheckParams):
+def check(params: CheckParams, db: Session = Depends(get_db)):
     # Verify if the session token exists in active sessions
-    session_exists = params.sessionToken in token_session_map
-    if session_exists:
-        session = token_session_map[params.sessionToken]
-        # renew the token for another set duration
-        start_new_token_timer(params.sessionToken)
-        return {"error": False, "status": "SESSION_AUTHENTICATED", "id": session.id, "is_admin": session.is_admin}
+    (session, is_admin) = check_session(params.sessionToken, db)
+    if session:
+        return {"error": False, "status": "SESSION_AUTHENTICATED", "id": session.user_id, "is_admin": is_admin}
     else:
         return {"error": True, "status": "INVALID_SESSION", "is_admin": False}
 
 @router.post("/logout")
-def check(params: CheckParams):
-    user_session = token_session_map.pop(params.sessionToken, None)
-    if user_session != None:
-        user_session.timer.cancel()
-    return "OK"
+def check(params: CheckParams, db: Session = Depends(get_db)):
+    (session, _) = check_session(params.sessionToken, db)
+    if session:
+        session.logged_out = True
+    db.commit()
 
 @router.get("/api/docs")
 async def custom_swagger_ui_html():

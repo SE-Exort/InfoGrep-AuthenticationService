@@ -11,8 +11,7 @@ from passlib.context import CryptContext
 from Endpoints import router
 from InfoGrep_BackendSDK.middleware import TracingMiddleware, LoggingMiddleware
 from InfoGrep_BackendSDK.infogrep_logger.logger import Logger
-from User import User
-from db import engine, get_db
+from db import Users, engine, get_db
 from dotenv import find_dotenv, load_dotenv
 from os import environ as env
 
@@ -40,10 +39,10 @@ if ENV_FILE:
 
 # If we are in auth=password mode, create the admin user if it doesn't exist
 db = next(get_db())
-if env.get("AUTH_MODE") == "password" and not db.query(User).filter(User.username == "admin").first():
+if env.get("AUTH_MODE") == "password" and len(db.query(Users).all()) == 0:
     Logger("AuthServiceLogger").info("Creating default admin user..")
     crypt_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    new_user = User(username="admin", password=crypt_ctx.hash("aANzQ0yUl5Pa@a"))
+    new_user = Users(username="admin", password=crypt_ctx.hash("aANzQ0yUl5Pa@a"), is_admin=True)
     
     db.add(new_user)
     db.commit()
@@ -60,7 +59,6 @@ InfoGrepAuthentication.add_middleware(
 InfoGrepAuthentication.add_middleware(SessionMiddleware, secret_key="some-random-string")
 
 InfoGrepAuthentication.include_router(router)
-
 
 if __name__ == "__main__":
     uvicorn.run(InfoGrepAuthentication, host="0.0.0.0", port=4000)
