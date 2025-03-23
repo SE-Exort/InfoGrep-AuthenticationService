@@ -76,7 +76,7 @@ def create_session(user_id: str, request: Request, db: Session) -> UUID:
 @router.get("/oauth_login")
 async def login(request: Request):
     enterprise = oauth.create_client('enterprise')
-    return await enterprise.authorize_redirect(request, redirect_uri=request.url_for("authorize"))
+    return await enterprise.authorize_redirect(request, redirect_uri=env.get("REDIRECT_URI"))
 
 @router.get("/authorize")
 async def authorize(request: Request, db: Session = Depends(get_db)):
