@@ -77,11 +77,16 @@ def ensure_auth_mode(mode: str):
 # (session, is_admin)
 def check_session(session: str, db: Session) -> tuple[Sessions, bool]:
     twenty_four_hours_ago = datetime.now(tz=timezone.utc) - timedelta(days=2)
-    session = db.query(Sessions).where(Sessions.id==session and Sessions.timestamp > twenty_four_hours_ago).first()
-    if not session or session.logged_out:
-        return (None, False)
-    user = db.query(Users).where(Users.id==session.user_id).one()
-    return (session, user.is_admin)
+    
+    try:
+        session = db.query(Sessions).where(Sessions.id==session and Sessions.timestamp > twenty_four_hours_ago).first()
+        if not session or session.logged_out:
+            return (None, False)
+        user = db.query(Users).where(Users.id==session.user_id).one()
+        return (session, user.is_admin)
+    except:
+        pass
+    return (None, False)
 
 def create_session(user_id: str, request: Request, db: Session) -> str:
     session = Sessions(user_id=user_id, ip_address=request.client.host)
