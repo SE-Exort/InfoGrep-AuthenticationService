@@ -8,7 +8,7 @@ import uuid
 from InfoGrep_BackendSDK.infogrep_logger.logger import Logger
 # DB config
 db_port = "5432"
-db_host = os.environ.get("PGHOST", f"auth-service-postgres:{db_port}")
+db_host = os.environ.get("PGHOST", f"localhost:{db_port}")
 db_user = os.environ.get("POSTGRES_USERNAME", "postgres")
 db_password = os.environ.get("POSTGRES_PASSWORD", "example")
 db_name = os.environ.get("PG_DATABASE_NAME", "postgres")
@@ -52,6 +52,7 @@ class Users(Base):
     username = Column(String(128), nullable=False)
     password = Column(String(128), nullable=False)
     is_admin = Column(Boolean(), nullable=False)
+    oauth = Column(Boolean(), nullable=False)
 
 class Sessions(Base):
     __tablename__ = 'sessions'

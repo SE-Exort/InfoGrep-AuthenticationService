@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from passlib.context import CryptContext
+from sqlalchemy import UUID
 from sqlalchemy.orm import Session
 from db import Sessions, Users, engine, get_db
 import threading
@@ -24,18 +26,6 @@ oauth.register(
 )
 
 router = APIRouter()
-
-class UserSession:
-    id: str
-    timer: threading.Timer
-    is_admin: bool
-
-    def __init__(self, id, timer, is_admin):
-        self.id = id
-        self.timer = timer
-        self.is_admin = is_admin
-
-oauth_map = dict()
 
 # Password hashing utility
 crypt_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -63,17 +53,6 @@ class AdminUserPatchParams(BaseModel):
 class AdminUserDeleteParams(BaseModel):
     id: str
 
-# all of our auth modes (oauth, password) are mutually exclusive
-def ensure_auth_mode(mode: str):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            if env.get("AUTH_MODE") != mode: 
-                raise HTTPException(status_code=400, detail="INVALID_AUTH_MODE")
-            return await func(*args, **kwargs)
-        return wrapper
-    return decorator
-
 # (session, is_admin)
 def check_session(session: str, db: Session) -> tuple[Sessions, bool]:
     twenty_four_hours_ago = datetime.now(tz=timezone.utc) - timedelta(days=2)
@@ -88,42 +67,43 @@ def check_session(session: str, db: Session) -> tuple[Sessions, bool]:
         pass
     return (None, False)
 
-def create_session(user_id: str, request: Request, db: Session) -> str:
+def create_session(user_id: str, request: Request, db: Session) -> UUID:
     session = Sessions(user_id=user_id, ip_address=request.client.host)
     db.add(session)
     db.commit()
     return session.id
 
 @router.get("/oauth_login")
-@ensure_auth_mode("oauth")
 async def login(request: Request):
     enterprise = oauth.create_client('enterprise')
-    redirect_uri = 'http://localhost:4000/authorize'
-    return await enterprise.authorize_redirect(request, redirect_uri)
+    return await enterprise.authorize_redirect(request, redirect_uri=request.url_for("authorize"))
 
 @router.get("/authorize")
-@ensure_auth_mode("oauth")
 async def authorize(request: Request, db: Session = Depends(get_db)):
     token = await oauth.enterprise.authorize_access_token(request)
-    user = token['userinfo']
-    oauth_map[user['email']] = token
-    return create_session(user['email'], request, db) # TODO: support Oauth admin
+    userinfo = token['userinfo']
+    username = userinfo['email']
+    user = db.query(Users).where(Users.username == username).where(Users.oauth == True).first()
+    if not user:
+        user = Users(username=username, password=username, is_admin=False, oauth=True)
+        db.add(user)
+        db.commit()
+    return RedirectResponse(env.get('FRONTEND_LOGIN_URI') + '?token=' + str(create_session(user.id, request, db)))
 
 @router.post("/register")
-@ensure_auth_mode("password")
 async def register(request: Request, sessionToken: str = Query(), params: RegisterParams = Body(), db: Session = Depends(get_db)):
     (session, is_admin) = check_session(sessionToken, db)
     if not session or not is_admin:
         return {"error": True, "status": "NOT_ADMIN"}
 
     # Check if the user already exists
-    user = db.query(Users).filter(Users.username == params.username).first()
+    user = db.query(Users).where(Users.username == params.username).where(Users.oauth == False).first()
     if user:
         raise HTTPException(status_code=400, detail="USER_ALREADY_EXISTS")
     
     # Hash password before storing it
     hashed_password = crypt_ctx.hash(params.password)
-    new_user = Users(username=params.username, password=hashed_password, is_admin=False)
+    new_user = Users(username=params.username, password=hashed_password, is_admin=False, oauth=False)
     db.add(new_user)
     db.commit()
     
@@ -132,7 +112,6 @@ async def register(request: Request, sessionToken: str = Query(), params: Regist
     return {"error": False, "status": "USER_REGISTERED", "data": session_token}
 
 @router.post("/login")
-@ensure_auth_mode("password")
 async def login(request: Request, params: LoginParams, db: Session = Depends(get_db)):
     # Retrieve user from the database
     user = db.query(Users).filter(Users.username == params.username).first()
@@ -146,7 +125,6 @@ async def login(request: Request, params: LoginParams, db: Session = Depends(get
     return {"error": False, "status": "SUCCESSFUL_AUTHENTICATION", "data": session_token}
 
 @router.patch("/user")
-@ensure_auth_mode("password")
 async def user(sessionToken: str = Query(), params: UserPatchParams = Body(), db: Session = Depends(get_db)):
     (session, _) = check_session(sessionToken, db)
     if not session:
@@ -159,7 +137,6 @@ async def user(sessionToken: str = Query(), params: UserPatchParams = Body(), db
     return {"error": False, "status": "USER_UPDATED"}
 
 @router.delete("/admin/user")
-@ensure_auth_mode("password")
 async def user(sessionToken: str = Query(), params: AdminUserDeleteParams = Body(), db: Session = Depends(get_db)):
     (session, is_admin) = check_session(sessionToken, db)
     if not session or not is_admin:
@@ -171,7 +148,6 @@ async def user(sessionToken: str = Query(), params: AdminUserDeleteParams = Body
     return {"error": False, "status": "USER_DELETED"}
 
 @router.patch("/admin/user")
-@ensure_auth_mode("password")
 async def user(sessionToken: str = Query(), params: AdminUserPatchParams = Body(), db: Session = Depends(get_db)):
     (session, is_admin) = check_session(sessionToken, db)
     if not session or not is_admin:
@@ -185,7 +161,6 @@ async def user(sessionToken: str = Query(), params: AdminUserPatchParams = Body(
     return {"error": False, "status": "USER_UPDATED"}
 
 @router.get("/admin/users")
-@ensure_auth_mode("password")
 async def user(sessionToken: str = Query(), db: Session = Depends(get_db)):
     (session, is_admin) = check_session(sessionToken, db)
     if not session or not is_admin:

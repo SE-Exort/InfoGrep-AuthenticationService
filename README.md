@@ -8,7 +8,8 @@ CLIENT_ID=
 CLIENT_SECRET=
 DOMAIN=
 APP_SECRET_KEY=
-AUTH_MODE=<either oauth or password>
+REDIRECT_URI=
+FRONTEND_LOGIN_URI=<login uri of infogrep>
 ```
 
 Then run `docker compose build && docker compose up -d`
